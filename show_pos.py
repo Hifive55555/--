@@ -2,7 +2,7 @@ import flet as ft
 import flet.canvas as cv
 import json
 from copy import deepcopy
-from disposition import calculate
+from disposition2 import calculate
 
 COLOR_MAP = {str(i): c for i, c in enumerate([
     ft.Colors.BLUE, ft.Colors.RED, ft.Colors.GREEN,
