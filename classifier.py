@@ -1,4 +1,6 @@
 import jieba
+import json
+
 def text_to_wordlist(text):
     wordss=jieba.cut(text)
     words=set(wordss)
@@ -65,6 +67,15 @@ def check(news,train_data):
         print("Unknown calculating mistake!\n")
         return 0.5
     return p_pos/(p_pos+p_nag)
+
+def save(data, filename):
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+def load(filename):
+    with open(filename, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data
+
 if __name__=="__main__":
     train_news = [
         "buy now get free money",
@@ -81,6 +92,10 @@ if __name__=="__main__":
         "can we meet tomorrow?",
         "special offer for your package"
     ]
+
+    save(train_result,"news.weight.json")
+    tr=load("news.weight.json")
     for news in test_news:
-        print(check(news,train_result))
+        print(check(news,tr))
     print("lishof")
+

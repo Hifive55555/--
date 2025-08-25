@@ -2,33 +2,27 @@ import feedparser
 from newspaper import Article
 import pandas as pd
 import os
-from classifier import train, check
+from classifier import load, check
+from typing import Callable
 
-train_news = [
-        "攻击黄岩岛",
-        "黄岩岛在24海里处遭受袭击，新闻2024年",
-        "网红打卡地",
-        "这一点也不好玩，美妆博主",
-        "岛屿遭受攻击，联合国发表说明",
-        "坚决捍卫我国领土完整",
-        "2025年10月，王源死了，入狱罚金1000万"
-    ]
-train_labels = [1, 1, 0, 0, 1, 1, 0]
-train_result = train(train_news, train_labels)
+train_result = load('news.weight.json')
 
-# 1) 配置：RSS 源可任意增删
+# 配置：RSS 源可任意增删
 RSS_URLS = [
     'https://rss.aishort.top/?type=cneb',
 ]
 
 OUTPUT = 'news.xlsx'   # 也可改成 .csv
-MAX_ARTICLES = 50     # 每次最多抓多少条
 
-def fetch_news():
+def fetch_news(progress_callback: Callable[[int, int], None] = None, max_articles: int = 50):
     rows = []
+    total_processed = 0
+    
     for rss in RSS_URLS:
         feed = feedparser.parse(rss)
-        for entry in feed.entries[:MAX_ARTICLES]:
+        entries = feed.entries[:max_articles]
+        
+        for entry in entries:
             try:
                 article = Article(entry.link, language='zh')  # 中文优先
                 article.download()
@@ -45,6 +39,10 @@ def fetch_news():
                     '值': f'{check_value:.4f}',
                 })
 
+                total_processed += 1
+                if progress_callback:
+                    progress_callback(total_processed, max_articles)
+                    
                 print(f"处理文章: {article.title} - 值: {check_value}")
             except Exception as e:
                 print(f"跳过 {entry.link}: {e}")

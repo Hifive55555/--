@@ -1,2 +1,5 @@
 __pycache__/
+train_set/
 *.xlsx
+lish.json
+news.weight.json
