@@ -1,6 +1,7 @@
 import flet as ft
 import flet.canvas as cv
 import json
+import math
 from copy import deepcopy
 from disposition2 import calculate
 
@@ -10,10 +11,10 @@ COLOR_MAP = {str(i): c for i, c in enumerate([
     ft.Colors.PINK, ft.Colors.AMBER], start=1)}
 
 DEFAULT_DATA = {
-    'self_ship_list': {'1': 3, '2': 2, '3': 10, '4': 0},
-    'self_r': {'1': 2, '2': 3, '3': 4, '4': 1},
-    'ship_dic': ['1', '2', '3', '4'],
-    'ship_name': {'1': '驱逐舰', '2': '护卫舰', '3': '巡洋舰', '4': '航母'}  # 新增
+    'self_ship_list': {'1': 2, '2': 4, '3': 6},
+    'self_r': {'1': 2, '2': 3, '3': 4},
+    'ship_dic': ['1', '2', '3'],
+    'ship_name': {'1': '驱逐护卫舰', '2': '海警船', '3': '小渔船'}
 }
 
 def next_id(existing):
@@ -31,6 +32,25 @@ def main(page: ft.Page):
     config_column = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO)
     grid_container = ft.Column(spacing=0)
     legend_container = ft.Row(spacing=10, wrap=True)
+    angle = 50    # 敌来袭角度
+    positions = []  # 计算得到的坐标列表
+
+    def update_angle(e):
+        nonlocal angle
+        angle = e.control.value
+        e.control.label = f"敌来袭角度：{angle}⁰"
+        build_grid(positions)
+        page.update()
+
+    slider_angle = ft.Slider(
+        min=0,
+        max=360,
+        divisions=18,
+        value=50,
+        label="敌来袭角度：{value}⁰",
+        width=400,
+        on_change=update_angle
+    )
 
     result = ft.Text()      # 用来显示解析后的结果（调试用）
     def parse_text(e):
@@ -117,7 +137,13 @@ def main(page: ft.Page):
     # ---------------- 生成 ----------------
     def on_generate(_):
         try:
-            positions = calculate(deepcopy(config))
+            input_data = {
+                'type_1': config['self_ship_list'].get('1', 0),
+                'type_2': config['self_ship_list'].get('2', 0),
+                'type_3': config['self_ship_list'].get('3', 0),
+                'dir': angle * math.pi / 180  # 转为弧度
+            }
+            positions = calculate(input_data)
             print("返回坐标数:", len(positions))   # 看看到底有没有数据
             build_grid(positions)
             build_legend()
@@ -268,6 +294,15 @@ def main(page: ft.Page):
             )
         )
 
+        # 画出敌来袭方向的线
+        rad = (angle + 0) * math.pi / 180
+        x_end = 5 * CELL + math.cos(rad) * 4.8 * CELL
+        y_end = 5 * CELL + math.sin(rad) * 4.8 * CELL
+        shapes.append(
+            cv.Line(5 * CELL, 5 * CELL, x_end, y_end,
+                    paint=ft.Paint(color=ft.Colors.RED, stroke_width=2, style=ft.PaintingStyle.STROKE))
+        )
+
         # 3. 把 Canvas 放进 grid_container
         grid_container.controls = [cv.Canvas(
             shapes,
@@ -305,6 +340,10 @@ def main(page: ft.Page):
                             ft.Text("半径", width=60, weight=ft.FontWeight.BOLD)]),
                     config_column,
                     ft.Divider(),
+                    ft.Text("敌来袭角度", size=18, weight=ft.FontWeight.BOLD),
+                    slider_angle,
+                    ft.Divider(),
+                    ft.Text("出港数据（调试用）", size=18, weight=ft.FontWeight.BOLD),
                     text_box,
                     result
                 ], spacing=10),

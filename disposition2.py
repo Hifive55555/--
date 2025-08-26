@@ -20,7 +20,9 @@ def put(data):
     if type_1%2==0:
         now_turn+=turn/2
     for i in range(type_1+type_2-round_2_type_2):
-        if i>=type_1:
+        if i<type_1/2:
+            round_1_type.append(1)
+        elif i<type_1/2+type_2-round_2_type_2:
             round_1_type.append(2)
         else:
             round_1_type.append(1)
@@ -36,7 +38,9 @@ def put(data):
     if round_2_type_2%2==0:
         now_turn+=turn/2
     for i in range(type_3+round_2_type_2-round_3_type_3):
-        if i>=round_2_type_2:
+        if i<round_2_type_2/2:
+            round_2_type.append(2)
+        elif i<type_3+round_2_type_2/2-round_3_type_3:
             round_2_type.append(3)
         else:
             round_2_type.append(2)
@@ -85,7 +89,7 @@ def calculate(data):
         fino_tp.append([str(r2t[i]),math.cos(r2p[i])*15,math.sin(r2p[i])*15])
     l=len(r3t)
     for i in range(l):
-        fino_tp.append([str(r3t[i]),math.cos(r3p[i])*24,math.sin(r3p[i])*24])
+        fino_tp.append([str(r3t[i]),math.cos(r3p[i])*12,math.sin(r3p[i])*12])
     return fino_tp
 
 print(calculate({'type_1':6,'type_2':6,'type_3':6,'dir':0}))

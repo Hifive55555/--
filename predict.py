@@ -29,6 +29,7 @@ def main(page: ft.Page):
     # 进度条、状态文字
     pb_pull    = ft.ProgressBar(width=400, visible=False)
     pb_predict = ft.ProgressBar(width=400, visible=False)
+    pb_train   = ft.ProgressBar(width=400, visible=False)  # 训练进度条
     lbl_status = ft.Text("", size=16, italic=True)
 
     # 【改动】顶部意向选择栏（横向 ListView）
@@ -43,10 +44,21 @@ def main(page: ft.Page):
     # ----------------------------------------------------------
     def load_excel_on_start():
         nonlocal news_df, intent_columns, selected_intent
-        if os.path.exists("news.xlsx"):
-            try:
-                news_df = pd.read_excel("news.xlsx")
-                # 【改动】自动识别意向列：除前三列外的所有数值列
+        try:
+            import collect_news
+        except ImportError:
+            # Silently handle the missing module case
+            news_df = None
+            intent_columns = []
+            selected_intent = None
+            lbl_status.value = "请拉取新闻"
+            page.update()
+            return
+
+        try:
+            news_df = collect_news.get_current_news()
+            if news_df is not None:
+                # 自动识别意向列：除前三列外的所有数值列
                 intent_columns = [
                     c for c in news_df.columns[3:]
                     if pd.api.types.is_numeric_dtype(news_df[c])
@@ -54,18 +66,17 @@ def main(page: ft.Page):
                 if not intent_columns:
                     lbl_status.value = "未检测到意向列（标题、时间、内容之后需为数值列）"
                 else:
-                    # 数值化
-                    for col in intent_columns:
-                        news_df[col] = pd.to_numeric(
-                            news_df[col], errors='coerce').fillna(0.0)
                     selected_intent = intent_columns[0]  # 默认第一个
                     lbl_status.value = f"已加载 {len(news_df)} 条历史新闻，共 {len(intent_columns)} 个意向"
                     refresh_intent_bar()
                     show_news()
-            except Exception as ex:
-                lbl_status.value = f"加载历史数据失败：{ex}"
-        else:
-            lbl_status.value = "未找到 news.xlsx，请拉取新闻"
+            else:
+                lbl_status.value = "请拉取新闻"
+        except Exception as ex:
+            news_df = None
+            intent_columns = []
+            selected_intent = None
+            lbl_status.value = "请拉取新闻"
         page.update()
 
     # ----------------------------------------------------------
@@ -82,26 +93,48 @@ def main(page: ft.Page):
             lbl_status.value = f"正在拉取新闻... ({current}/{total})"
             page.update()
 
+        def update_news(row_data: Dict):
+            nonlocal news_df
+            # Convert single row to DataFrame
+            new_row = pd.DataFrame([row_data])
+            
+            # Update news_df
+            if news_df is None:
+                news_df = new_row
+            else:
+                news_df = pd.concat([news_df, new_row]).drop_duplicates(subset=['标题'])
+            
+            # Update intent columns if needed
+            nonlocal intent_columns, selected_intent
+            if not intent_columns:
+                intent_columns = [
+                    c for c in news_df.columns[3:]
+                    if pd.api.types.is_numeric_dtype(news_df[c])
+                ]
+                if intent_columns:
+                    selected_intent = intent_columns[0]
+
+            # Refresh display
+            if selected_intent:
+                refresh_intent_bar()
+                show_news()
+
         try:
             import collect_news
             max_articles = int(slider_max_articles.value)
-            collected_news = collect_news.fetch_news(
+            news_df = collect_news.fetch_news(
                 progress_callback=update_progress,
+                news_callback=update_news,  # Add news callback
                 max_articles=max_articles
             )
-            news_df = pd.DataFrame(collected_news)
-            # 重新识别意向列
+            # Final update after all news collected
             intent_columns = [
                 c for c in news_df.columns[3:]
                 if pd.api.types.is_numeric_dtype(news_df[c])
             ]
             if not intent_columns:
                 raise ValueError("收集到的新闻没有意向列")
-            for col in intent_columns:
-                news_df[col] = pd.to_numeric(
-                    news_df[col], errors='coerce').fillna(0.0)
             selected_intent = intent_columns[0]
-            news_df.to_excel("news.xlsx", index=False)
             lbl_status.value = f"已拉取 {len(news_df)} 条新闻，共 {len(intent_columns)} 个意向"
             refresh_intent_bar()
             show_news()
@@ -318,10 +351,55 @@ def main(page: ft.Page):
         page.update()
 
     # ----------------------------------------------------------
+    # 训练模型
+    # ----------------------------------------------------------
+    def train_models(e):
+        try:
+            import train_news
+            pb_train.visible = True
+            lbl_status.value = "正在训练模型..."
+            page.update()
+            
+            result = train_news.start_training()
+            
+            # 显示训练结果对话框
+            def close_dlg(e):
+                dlg.open = False
+                page.update()
+            
+            dlg = ft.AlertDialog(
+                title=ft.Text("训练结果"),
+                content=ft.Column([
+                    ft.Text(result, size=14, selectable=True)
+                ], scroll=ft.ScrollMode.AUTO),
+                actions=[ft.TextButton("关闭", on_click=close_dlg)],
+                actions_alignment=ft.MainAxisAlignment.END
+            )
+            
+            page.overlay.append(dlg)
+            dlg.open = True
+            lbl_status.value = "训练完成"
+            
+        except ImportError:
+            lbl_status.value = "未找到训练模块"
+        except Exception as ex:
+            lbl_status.value = f"训练失败：{ex}"
+        finally:
+            pb_train.visible = False
+            page.update()
+
+    # ----------------------------------------------------------
     # 按钮
     # ----------------------------------------------------------
     btn_pull   = ft.ElevatedButton("拉取新闻", on_click=pull_news, width=200)
     btn_predict= ft.ElevatedButton("预测",     on_click=predict,   width=200)
+    btn_train  = ft.ElevatedButton(
+        "训练模型",
+        on_click=train_models,
+        width=200,
+        bgcolor=ft.Colors.AMBER,
+        color=ft.Colors.BLACK
+    )
 
     # ----------------------------------------------------------
     # 滑动条：最大新闻数量
@@ -341,9 +419,11 @@ def main(page: ft.Page):
     # ----------------------------------------------------------
     page.add(
         ft.Column([
-            ft.Row([btn_pull, btn_predict], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Row([btn_pull, btn_predict, btn_train], 
+                  alignment=ft.MainAxisAlignment.CENTER),
             pb_pull,
             pb_predict,
+            pb_train,
             lbl_status,
             ft.Divider(height=1),
             ft.Row([

@@ -1,5 +1,10 @@
 __pycache__/
 train_set/
+build/
+dist/
+huang/
 *.xlsx
+*.spec
+*.zip
 lish.json
 news.weight.json

@@ -3,7 +3,10 @@ from newspaper import Article
 import pandas as pd
 import os
 from classifier import load, check
-from typing import Callable
+from typing import Callable, List, Dict, Optional
+
+# Global variable to store the latest news DataFrame
+current_news_df: Optional[pd.DataFrame] = None
 
 # 获取所有模型
 def load_all_models(base_folder='train_set'):
@@ -30,7 +33,12 @@ RSS_URLS = [
 
 OUTPUT = 'news.xlsx'   # 也可改成 .csv
 
-def fetch_news(progress_callback: Callable[[int, int], None] = None, max_articles: int = 50):
+def fetch_news(
+    progress_callback: Callable[[int, int], None] = None, 
+    news_callback: Callable[[Dict], None] = None,  # Add news callback
+    max_articles: int = 50
+) -> pd.DataFrame:
+    global current_news_df
     rows = []
     total_processed = 0
     
@@ -47,52 +55,50 @@ def fetch_news(progress_callback: Callable[[int, int], None] = None, max_article
                     continue
                 content = article.text.strip().replace('\n', ' ')
                 
-                # 创建基础数据字典
                 row_data = {
                     '时间': article.publish_date.strftime('%Y-%m-%d %H:%M') if article.publish_date else '',
                     '标题': article.title or entry.title,
                     '内容': content,
                 }
                 
-                # 对每个模型计算值
                 for model_name, model in models.items():
                     check_value = check(content, model)
-                    row_data[model_name] = f'{check_value:.4f}'
-                    print(f"处理文章: {article.title} - {model_name}: {check_value}")
+                    row_data[model_name] = float(f'{check_value:.4f}')
 
                 rows.append(row_data)
-
                 total_processed += 1
+                
+                # Call callbacks
                 if progress_callback:
                     progress_callback(total_processed, max_articles)
+                if news_callback:
+                    news_callback(row_data)  # Send new news immediately
                     
             except Exception as e:
                 print(f"跳过 {entry.link}: {e}")
-    return rows
 
-def main():
-    if not models:
-        print("错误：未找到任何模型！")
-        return
-        
-    df_new = pd.DataFrame(fetch_news())
+    df_new = pd.DataFrame(rows)
     
+    # Update current_news_df and save to Excel
     if os.path.exists(OUTPUT):
-        df_old = pd.read_excel(OUTPUT) if OUTPUT.endswith('xlsx') else pd.read_csv(OUTPUT)
-        df_all = pd.concat([df_old, df_new]).drop_duplicates(subset=['标题'])
+        df_old = pd.read_excel(OUTPUT)
+        current_news_df = pd.concat([df_old, df_new]).drop_duplicates(subset=['标题'])
     else:
-        df_all = df_new
+        current_news_df = df_new
 
-    # 将所有模型的值转换为float类型
+    # Convert all model columns to float
     for model_name in models.keys():
-        if model_name in df_all.columns:
-            df_all[model_name] = df_all[model_name].astype(float)
+        if model_name in current_news_df.columns:
+            current_news_df[model_name] = current_news_df[model_name].astype(float)
     
-    if OUTPUT.endswith('xlsx'):
-        df_all.to_excel(OUTPUT, index=False)
-    else:
-        df_all.to_csv(OUTPUT, index=False, encoding='utf-8-sig')
-    print(f"已保存 {len(df_all)} 条新闻 → {OUTPUT}")
+    # Save to Excel
+    current_news_df.to_excel(OUTPUT, index=False)
+    
+    return current_news_df
 
-if __name__ == '__main__':
-    main()
+def get_current_news() -> Optional[pd.DataFrame]:
+    """Get the current news DataFrame"""
+    global current_news_df
+    if current_news_df is None and os.path.exists(OUTPUT):
+        current_news_df = pd.read_excel(OUTPUT)
+    return current_news_df
