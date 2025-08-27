@@ -1,3 +1,4 @@
+import math
 def train(samples,labels):
     positive_cnt=0
     nagetive_cnt=0
@@ -13,15 +14,17 @@ def train(samples,labels):
             feature=sample[i]
             dic[i].add(feature)
             if label==1:
-                if feature in positive[i]:
-                    positive[i][feature]+=1
-                else:
-                    positive[i][feature]=1
+                positive[i][feature]=positive[i].get(feature,0)+1
+                nagetive[i][feature]=nagetive[i].get(feature,0)
             else:
-                if feature in nagetive[i]:
-                    nagetive[i][feature]+=1
-                else:
-                    nagetive[i][feature]=1
+                positive[i][feature]=positive[i].get(feature,0)
+                nagetive[i][feature]=nagetive[i].get(feature,0)+1
+    Dic=[set(),set(),set()]
+    for i in range(3):
+        for feature in dic[i]:
+            if abs(positive[i].get(feature,0)-nagetive[i].get(feature,0))/(positive[i].get(feature,0)+nagetive[i].get(feature,0))>=0.001:
+                Dic[i].add(feature)
+    dic=Dic
     return {
         'positive_cnt': positive_cnt,
         'nagetive_cnt': nagetive_cnt,
@@ -36,25 +39,25 @@ def check(target,modul):
     positive=modul['positive']
     nagetive=modul['nagetive']
     total=positive_cnt+nagetive_cnt
-    p_nagetive=1.0
+    p_nagetive=0
     for i in range(3):
-        cnt=nagetive[i].get(target[i],0)
-        p=(cnt+1)/(nagetive_cnt+len(dic[i]))
-        p_nagetive*=p
-    
-    p_positive=1.0
+        if target[i] in dic[i]:
+            cnt=nagetive[i].get(target[i],0)
+            p=(cnt+1)/(nagetive_cnt+len(dic[i]))
+            p_nagetive+=math.log10(p)
+    p_positive=0
     for i in range(3):
-        cnt=positive[i].get(target[i],0)
-        p=(cnt+1)/(positive_cnt+len(dic[i]))
-        p_positive*=p
-
+        if target[i] in dic[i]:
+            cnt=positive[i].get(target[i],0)
+            p=(cnt+1)/(positive_cnt+len(dic[i]))
+            p_positive+=math.log10(p)
     P_positive=positive_cnt/total
     P_nagetive=nagetive_cnt/total
+    p_nagetive=pow(10,p_nagetive)
+    p_positive=pow(10,p_positive)
     P=P_positive*p_positive+P_nagetive*p_nagetive
     #print(p_nagetive/P)
     #return 1-(p_nagetive/P)
-    
-
     return 1-P_nagetive*p_nagetive/P
 if __name__=="__main__":
     train_samples=[

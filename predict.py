@@ -70,6 +70,7 @@ def main(page: ft.Page):
                     lbl_status.value = f"已加载 {len(news_df)} 条历史新闻，共 {len(intent_columns)} 个意向"
                     refresh_intent_bar()
                     show_news()
+                collect_news.update_models()  # 更新模型
             else:
                 lbl_status.value = "请拉取新闻"
         except Exception as ex:
@@ -82,19 +83,52 @@ def main(page: ft.Page):
     # ----------------------------------------------------------
     # 拉取新闻
     # ----------------------------------------------------------
-    def pull_news(e):
+    def pull_news(e, force_refresh: bool = False):
         nonlocal news_df, intent_columns, selected_intent
         pb_pull.visible = True
-        lbl_status.value = "正在拉取新闻..."
+        
+        # Handle force refresh
+        if force_refresh:
+            try:
+                import os
+                if os.path.exists('news.xlsx'):
+                    os.remove('news.xlsx')
+                news_df = None
+                intent_columns = []
+                selected_intent = None
+                lbl_status.value = "正在重新拉取新闻..."
+            except Exception as ex:
+                lbl_status.value = f"清除历史数据失败：{ex}"
+                pb_pull.visible = False
+                page.update()
+                return
+        else:
+            lbl_status.value = "正在拉取新闻..."
+        
         page.update()
+
+        # Keep track of processed titles for UI updates
+        seen_titles = set()
+        if news_df is not None:
+            seen_titles.update(news_df['标题'].tolist())
+        total_new = 0
 
         def update_progress(current: int, total: int):
             pb_pull.value = current / total
-            lbl_status.value = f"正在拉取新闻... ({current}/{total})"
+            lbl_status.value = f"正在拉取新闻... (新增 {current}/{total})"
             page.update()
 
         def update_news(row_data: Dict):
-            nonlocal news_df
+            nonlocal news_df, total_new
+            title = row_data.get('标题', '')
+            
+            # Skip if already displayed
+            if title in seen_titles:
+                return
+                
+            seen_titles.add(title)
+            total_new += 1
+            
             # Convert single row to DataFrame
             new_row = pd.DataFrame([row_data])
             
@@ -102,7 +136,7 @@ def main(page: ft.Page):
             if news_df is None:
                 news_df = new_row
             else:
-                news_df = pd.concat([news_df, new_row]).drop_duplicates(subset=['标题'])
+                news_df = pd.concat([news_df, new_row])
             
             # Update intent columns if needed
             nonlocal intent_columns, selected_intent
@@ -124,10 +158,11 @@ def main(page: ft.Page):
             max_articles = int(slider_max_articles.value)
             news_df = collect_news.fetch_news(
                 progress_callback=update_progress,
-                news_callback=update_news,  # Add news callback
+                news_callback=update_news,
                 max_articles=max_articles
             )
-            # Final update after all news collected
+            
+            # Final update
             intent_columns = [
                 c for c in news_df.columns[3:]
                 if pd.api.types.is_numeric_dtype(news_df[c])
@@ -135,7 +170,7 @@ def main(page: ft.Page):
             if not intent_columns:
                 raise ValueError("收集到的新闻没有意向列")
             selected_intent = intent_columns[0]
-            lbl_status.value = f"已拉取 {len(news_df)} 条新闻，共 {len(intent_columns)} 个意向"
+            lbl_status.value = f"已拉取 {total_new} 条新闻，共 {len(intent_columns)} 个意向"
             refresh_intent_bar()
             show_news()
         except Exception as ex:
@@ -400,10 +435,20 @@ def main(page: ft.Page):
         bgcolor=ft.Colors.AMBER,
         color=ft.Colors.BLACK
     )
+    btn_pull_refresh = ft.ElevatedButton(
+        "覆盖拉取", 
+        on_click=lambda e: pull_news(e, force_refresh=True),
+        width=200,
+        bgcolor=ft.Colors.RED_400,
+        color=ft.Colors.WHITE,
+    )
 
     # ----------------------------------------------------------
     # 滑动条：最大新闻数量
     # ----------------------------------------------------------
+    def update_slider_label(e):
+        slider_max_articles.label = f"最大新闻数量：{int(e.control.value)}"
+        page.update()
     slider_max_articles = ft.Slider(
         min=10,
         max=100,
@@ -411,7 +456,7 @@ def main(page: ft.Page):
         value=50,
         label="最大新闻数量：{value}",
         width=300,
-        on_change=lambda e: setattr(slider_max_articles, "label", f"最大新闻数量：{int(e.control.value)}")
+        on_change=update_slider_label
     )
 
     # ----------------------------------------------------------
@@ -419,7 +464,7 @@ def main(page: ft.Page):
     # ----------------------------------------------------------
     page.add(
         ft.Column([
-            ft.Row([btn_pull, btn_predict, btn_train], 
+            ft.Row([btn_pull, btn_pull_refresh, btn_predict, btn_train], 
                   alignment=ft.MainAxisAlignment.CENTER),
             pb_pull,
             pb_predict,

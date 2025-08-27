@@ -1,5 +1,6 @@
 import jieba
 import json
+import math
 
 def text_to_wordlist(text):
     wordss=jieba.cut(text)
@@ -53,16 +54,18 @@ def check(news,train_data):
     p_positive=positive_data/total_data
     p_nagetive=nagetive_data/total_data
     words=text_to_wordlist(news)
-    p_pos=1.0
-    p_nag=1.0
+    p_pos=0
+    p_nag=0
     for word in words:
         if word in wordlist:
             p=(positive[word]+1)/(positive_data+len(wordlist))
-            p_pos=p_pos*p
+            p_pos=p_pos+math.log10(p)
             p=(nagetive[word]+1)/(nagetive_data+len(wordlist))
-            p_nag=p_nag*p
-    p_pos=p_pos*p_positive
-    p_nag=p_nag*p_nagetive
+            p_nag=p_nag+math.log10(p)
+    p_pos=p_pos+math.log10(p_positive)
+    p_nag=p_nag+math.log10(p_nagetive)
+    p_pos=math.pow(10,p_pos)
+    p_nag=math.pow(10,p_nag)
     if p_pos+p_nag==0:
         print("Unknown calculating mistake!\n")
         return 0.5
@@ -98,4 +101,3 @@ if __name__=="__main__":
     for news in test_news:
         print(check(news,tr))
     print("lishof")
-

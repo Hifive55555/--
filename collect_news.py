@@ -26,6 +26,11 @@ def load_all_models(base_folder='train_set'):
 # 加载所有模型
 models = load_all_models()
 
+# 动态更新模型钩子
+def update_models():
+    global models
+    models = load_all_models()
+
 # 配置：RSS 源可任意增删
 RSS_URLS = [
     'https://rss.aishort.top/?type=cneb',
@@ -35,29 +40,52 @@ OUTPUT = 'news.xlsx'   # 也可改成 .csv
 
 def fetch_news(
     progress_callback: Callable[[int, int], None] = None, 
-    news_callback: Callable[[Dict], None] = None,  # Add news callback
+    news_callback: Callable[[Dict], None] = None,
     max_articles: int = 50
 ) -> pd.DataFrame:
     global current_news_df
     rows = []
     total_processed = 0
+    existing_titles = set()
+    
+    # Load existing titles
+    if os.path.exists(OUTPUT):
+        df_old = pd.read_excel(OUTPUT)
+        existing_titles.update(df_old['标题'].tolist())
     
     for rss in RSS_URLS:
         feed = feedparser.parse(rss)
-        entries = feed.entries[:max_articles]
+        entries = feed.entries
+        new_articles_count = 0
         
         for entry in entries:
+            if new_articles_count >= max_articles:
+                break
+                
             try:
+                # Skip if title already exists
+                title = entry.title
+                if title in existing_titles:
+                    continue
+                    
                 article = Article(entry.link, language='zh')
                 article.download()
                 article.parse()
                 if not article.text:
                     continue
+                    
                 content = article.text.strip().replace('\n', ' ')
+                title = article.title or entry.title
+                
+                # Skip if title already exists (double check)
+                if title in existing_titles:
+                    continue
+                
+                existing_titles.add(title)
                 
                 row_data = {
                     '时间': article.publish_date.strftime('%Y-%m-%d %H:%M') if article.publish_date else '',
-                    '标题': article.title or entry.title,
+                    '标题': title,
                     '内容': content,
                 }
                 
@@ -66,13 +94,14 @@ def fetch_news(
                     row_data[model_name] = float(f'{check_value:.4f}')
 
                 rows.append(row_data)
+                new_articles_count += 1
                 total_processed += 1
                 
-                # Call callbacks
+                # Call callbacks with true progress
                 if progress_callback:
-                    progress_callback(total_processed, max_articles)
+                    progress_callback(new_articles_count, max_articles)
                 if news_callback:
-                    news_callback(row_data)  # Send new news immediately
+                    news_callback(row_data)
                     
             except Exception as e:
                 print(f"跳过 {entry.link}: {e}")
@@ -82,7 +111,7 @@ def fetch_news(
     # Update current_news_df and save to Excel
     if os.path.exists(OUTPUT):
         df_old = pd.read_excel(OUTPUT)
-        current_news_df = pd.concat([df_old, df_new]).drop_duplicates(subset=['标题'])
+        current_news_df = pd.concat([df_old, df_new])
     else:
         current_news_df = df_new
 
