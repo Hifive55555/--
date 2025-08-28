@@ -6,5 +6,6 @@ huang/
 *.xlsx
 *.spec
 *.zip
+*.log
 lish.json
 news.weight.json

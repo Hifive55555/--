@@ -2,10 +2,17 @@
 import flet as ft
 import pandas as pd
 import os
+import logging
 from typing import Dict, List, Tuple, Optional
 
 NEWS_COLLECT_SCRIPT = "collect_news.py"
 PREDICT_SCRIPT      = "predict.py"
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    filename="app.log"
+)
 
 # ----------------------------------------------------------
 # GUI
@@ -109,7 +116,7 @@ def main(page: ft.Page):
 
         # Keep track of processed titles for UI updates
         seen_titles = set()
-        if news_df is not None:
+        if news_df is not None and not news_df.empty and '标题' in news_df.columns:
             seen_titles.update(news_df['标题'].tolist())
         total_new = 0
 
@@ -133,7 +140,7 @@ def main(page: ft.Page):
             new_row = pd.DataFrame([row_data])
             
             # Update news_df
-            if news_df is None:
+            if news_df is None or news_df.empty:
                 news_df = new_row
             else:
                 news_df = pd.concat([news_df, new_row])
@@ -167,7 +174,9 @@ def main(page: ft.Page):
                 c for c in news_df.columns[3:]
                 if pd.api.types.is_numeric_dtype(news_df[c])
             ]
+            logging.debug(f"Detected intent columns: {intent_columns}")
             if not intent_columns:
+                logging.error(f"Data frame is empty\n{news_df}")
                 raise ValueError("收集到的新闻没有意向列")
             selected_intent = intent_columns[0]
             lbl_status.value = f"已拉取 {total_new} 条新闻，共 {len(intent_columns)} 个意向"
